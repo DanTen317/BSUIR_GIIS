@@ -42,6 +42,24 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
+        tool_menu = menu_bar.addMenu("Tools")
+        lines_submenu = tool_menu.addMenu("Lines")
+
+        # Действия для выбора алгоритма
+
+        dda_action = QAction("DDA", self)
+        dda_action.triggered.connect(lambda: self.canvas.set_algorithm("dda"))
+
+        bresenham_action = QAction("Bresenham", self)
+        bresenham_action.triggered.connect(lambda: self.canvas.set_algorithm("bresenham"))
+
+        wu_action = QAction("Wu", self)
+        wu_action.triggered.connect(lambda: self.canvas.set_algorithm("wu"))
+
+        lines_submenu.addAction(dda_action)
+        lines_submenu.addAction(bresenham_action)
+        lines_submenu.addAction(wu_action)
+
     def build_window_content(self):
         main_layout = QVBoxLayout()
 

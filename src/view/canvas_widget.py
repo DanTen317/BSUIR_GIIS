@@ -1,7 +1,11 @@
 import numpy as np
 from PyQt6.QtCore import Qt, QPoint, QSize
-from PyQt6.QtGui import QImage, QColor, QMouseEvent, QPainter, QWheelEvent
-from PyQt6.QtWidgets import QWidget, QScrollArea
+from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor
+from PyQt6.QtWidgets import QWidget
+
+from src.drawing_algorithms.lines.bresenham import bresenham_line
+from src.drawing_algorithms.lines.dda import dda_line
+from src.drawing_algorithms.lines.wu import wu_line
 
 
 class Canvas(QWidget):
@@ -24,13 +28,24 @@ class Canvas(QWidget):
         self.dragging = False
         self.last_mouse_pos = QPoint(0, 0)
 
-        # Создаем массив пикселей и QImage
-        self.pixels = np.zeros((self.image_height, self.image_width, 4), dtype=np.uint8)
-        self.pixels[:, :, :3] = 255  # Белый фон
-        self.pixels[:, :, 3] = 255  # Альфа-канал
-        self.image = QImage(self.pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
+        # Холст в формате RGBA
+        self.canvas_pixels = np.zeros((self.image_height, self.image_width, 4), dtype=np.uint8)
+        self.canvas_pixels[:, :, :3] = 255  # Белый фон
+        self.canvas_pixels[:, :, 3] = 255  # Полная прозрачность
+
+        self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
 
         self.setMouseTracking(True)
+
+        # Переменные для хранения начальных и конечных точек
+        self.drawing_line = False
+        self.start_point = None
+        self.end_point = None
+
+        # Хранение всех фигур
+        self.objects = []
+
+        self.algorithm = "dda"
 
     def sizeHint(self):
         """Размер холста с учетом масштаба"""
@@ -91,11 +106,24 @@ class Canvas(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self.dragging = True
             self.last_mouse_pos = event.pos()
+        """Обработка нажатия мыши"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Начало рисования линии
+            self.drawing_line = True
+            self.start_point = self.to_canvas_coords(event.pos())
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Окончание перетаскивания"""
         if event.button() == Qt.MouseButton.MiddleButton:
             self.dragging = False
+
+        """Обработка отпускания мыши"""
+        if event.button() == Qt.MouseButton.LeftButton and self.drawing_line:
+            # Завершение рисования линии
+            self.end_point = self.to_canvas_coords(event.pos())
+            self.draw_line_on_canvas(self.start_point, self.end_point)
+            self.drawing_line = False
+            self.update()
 
     def paintEvent(self, event):
         """Рендеринг холста"""
@@ -103,6 +131,14 @@ class Canvas(QWidget):
 
         # Масштабирование изображения
         scaled_image = self.image.scaled(self.sizeHint(), Qt.AspectRatioMode.IgnoreAspectRatio)
+
+        # Визуализация текущей линии во время рисования
+        if self.drawing_line and self.start_point:
+            painter.setPen(Qt.GlobalColor.blue)
+            canvas_end = self.to_canvas_coords(self.mapFromGlobal(QCursor.pos()))
+            start_screen = QPoint(*self.start_point) * self.zoom_factor + self.offset
+            end_screen = QPoint(*canvas_end) * self.zoom_factor + self.offset
+            painter.drawLine(start_screen, end_screen)
 
         # Отрисовка изображения с учетом смещения
         painter.drawImage(self.offset, scaled_image)
@@ -137,3 +173,55 @@ class Canvas(QWidget):
     def resizeEvent(self, a0):
         self.clamp_offset()
         self.update()
+
+    def to_canvas_coords(self, pos: QPoint) -> tuple:
+        """Конвертирует координаты окна в координаты холста"""
+        x = int((pos.x() - self.offset.x()) / self.zoom_factor)
+        y = int((pos.y() - self.offset.y()) / self.zoom_factor)
+        return x, y
+
+    def draw_line_on_canvas(self, start, end):
+        """Рисует линию выбранным алгоритмом."""
+
+        # Выбор алгоритма
+        if self.algorithm == "wu":
+            pixels = wu_line(start, end)
+            for x, y, alpha in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    existing_color = self.canvas_pixels[y, x]
+
+                    # Альфа-композиция
+                    new_alpha = alpha / 255.0
+                    inv_alpha = 1.0 - new_alpha
+
+                    r = int(existing_color[0] * inv_alpha)
+                    g = int(existing_color[1] * inv_alpha)
+                    b = int(existing_color[2] * inv_alpha)
+
+                    self.canvas_pixels[y, x] = [
+                        np.uint8(r),
+                        np.uint8(g),
+                        np.uint8(b),
+                        np.uint8(255 * new_alpha + existing_color[3] * inv_alpha)
+                    ]
+
+        elif self.algorithm == "bresenham":
+            pixels = bresenham_line(start, end)
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+
+        elif self.algorithm == "dda":
+            pixels = dda_line(start, end)
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+
+        self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
+        self.update()
+
+    def set_algorithm(self, algo_name):
+        """Меняет алгоритм рисования"""
+        if algo_name.lower() in {"wu", "bresenham", "dda"}:
+            self.algorithm = algo_name.lower()
+            print(f"Алгоритм изменен на: {self.algorithm}")
