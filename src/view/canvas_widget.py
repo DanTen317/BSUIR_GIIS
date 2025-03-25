@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 from PyQt6.QtCore import Qt, QPoint, QSize
 from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor
@@ -186,36 +188,28 @@ class Canvas(QWidget):
         # Выбор алгоритма
         if self.algorithm == "wu":
             pixels = wu_line(start, end)
-            for x, y, alpha in pixels:
-                if 0 <= x < self.image_width and 0 <= y < self.image_height:
-                    existing_color = self.canvas_pixels[y, x]
-
-                    # Альфа-композиция
-                    new_alpha = alpha / 255.0
-                    inv_alpha = 1.0 - new_alpha
-
-                    r = int(existing_color[0] * inv_alpha)
-                    g = int(existing_color[1] * inv_alpha)
-                    b = int(existing_color[2] * inv_alpha)
-
-                    self.canvas_pixels[y, x] = [
-                        np.uint8(r),
-                        np.uint8(g),
-                        np.uint8(b),
-                        np.uint8(255 * new_alpha + existing_color[3] * inv_alpha)
-                    ]
+            self.draw_object_from_pixels(pixels)
+            self.objects.append(pixels)
 
         elif self.algorithm == "bresenham":
             pixels = bresenham_line(start, end)
             for x, y in pixels:
                 if 0 <= x < self.image_width and 0 <= y < self.image_height:
                     self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
 
         elif self.algorithm == "dda":
             pixels = dda_line(start, end)
             for x, y in pixels:
                 if 0 <= x < self.image_width and 0 <= y < self.image_height:
                     self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
 
         self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
         self.update()
@@ -225,3 +219,32 @@ class Canvas(QWidget):
         if algo_name.lower() in {"wu", "bresenham", "dda"}:
             self.algorithm = algo_name.lower()
             print(f"Алгоритм изменен на: {self.algorithm}")
+
+    def redraw(self):
+        self.canvas_pixels[:, :, :3] = 255  # Белый фон
+        self.canvas_pixels[:, :, 3] = 255  # Полная прозрачность
+        for object in self.objects:
+            self.draw_object_from_pixels(object)
+
+        self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
+        self.update()
+
+    def draw_object_from_pixels(self, object: List):
+        for x, y, alpha in object:
+            if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                existing_color = self.canvas_pixels[y, x]
+
+                # Альфа-композиция
+                new_alpha = alpha / 255.0
+                inv_alpha = 1.0 - new_alpha
+
+                r = int(existing_color[0] * inv_alpha)
+                g = int(existing_color[1] * inv_alpha)
+                b = int(existing_color[2] * inv_alpha)
+
+                self.canvas_pixels[y, x] = [
+                    np.uint8(r),
+                    np.uint8(g),
+                    np.uint8(b),
+                    np.uint8(255 * new_alpha + existing_color[3] * inv_alpha)
+                ]
