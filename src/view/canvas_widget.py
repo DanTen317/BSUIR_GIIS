@@ -1,9 +1,10 @@
+from operator import invert
 from typing import List
 
 import numpy as np
 from PyQt6.QtCore import Qt, QPoint, QSize
-from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor, QIcon
+from PyQt6.QtWidgets import QWidget, QMessageBox
 
 from src.drawing_algorithms.lines.bresenham import bresenham_line
 from src.drawing_algorithms.lines.dda import dda_line
@@ -22,7 +23,9 @@ class Canvas(QWidget):
         self.image_height = size.height()
 
         # Масштабирование и перемещение
-        self.zoom_factor = 1.0
+        self.zoom_factor = float(
+            min(self.width() - int(self.width() * 0.9) / self.image_width,
+                int(self.height() * 0.9) / self.image_height))
         self.offset = QPoint(0, 0)  # Смещение при перетаскивании
         self.clamp_offset()
         self.update()
@@ -48,6 +51,12 @@ class Canvas(QWidget):
         self.objects = []
 
         self.algorithm = "dda"
+
+        # Стеки для дебага
+        self.in_debug = False
+        self.debug_stack = []  # Удаленные линии (для "назад")
+        self.redo_stack = []  # Вернутые линии (для "вперед")
+        self.object_debugging = False
 
     def sizeHint(self):
         """Размер холста с учетом масштаба"""
@@ -109,7 +118,7 @@ class Canvas(QWidget):
             self.dragging = True
             self.last_mouse_pos = event.pos()
         """Обработка нажатия мыши"""
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and not self.in_debug:
             # Начало рисования линии
             self.drawing_line = True
             self.start_point = self.to_canvas_coords(event.pos())
@@ -120,7 +129,7 @@ class Canvas(QWidget):
             self.dragging = False
 
         """Обработка отпускания мыши"""
-        if event.button() == Qt.MouseButton.LeftButton and self.drawing_line:
+        if event.button() == Qt.MouseButton.LeftButton and self.drawing_line and not self.in_debug:
             # Завершение рисования линии
             self.end_point = self.to_canvas_coords(event.pos())
             self.draw_line_on_canvas(self.start_point, self.end_point)
@@ -248,3 +257,66 @@ class Canvas(QWidget):
                     np.uint8(b),
                     np.uint8(255 * new_alpha + existing_color[3] * inv_alpha)
                 ]
+
+    def enter_debug_mode(self):
+        """Удаление последней линии при входе в дебаг."""
+        self.in_debug = True
+        if self.objects:
+            self.remove_last_object()
+
+    def exit_debug_mode(self):
+        """Возвращение удаленной линии при выходе из дебага."""
+        self.in_debug = False
+        self.restore_last_object()
+
+    def remove_last_object(self):
+        """Удаляет последнюю линию и добавляет в стек дебага."""
+        if self.objects:
+            last_object = self.objects.pop()
+            self.redo_stack = last_object
+            self.redraw()
+            self.object_debugging = False
+
+    def restore_last_object(self):
+        """Возвращает линию из стека дебага."""
+        if self.object_debugging:
+            self.objects.pop()
+        restored_object = self.debug_stack + self.redo_stack
+        self.debug_stack = []
+        self.redo_stack = []
+        self.objects.append(restored_object)
+        self.redraw()
+
+    def debug_prev(self):
+        """Шаг назад (удаление линии)."""
+        if self.debug_stack:
+            if self.object_debugging:
+                self.objects.pop()
+            self.redo_stack.insert(0, self.debug_stack.pop())
+            restored_object = self.debug_stack
+            self.objects.append(restored_object)
+            self.redraw()
+            self.object_debugging = True
+        else:
+            self.show_alert("Nothing to undo.")
+
+    def debug_next(self):
+        """Шаг вперед (возврат линии)."""
+        if self.redo_stack:
+            if self.object_debugging:
+                self.objects.pop()
+            self.debug_stack.append(self.redo_stack.pop(0))
+            restored_object = self.debug_stack
+            self.objects.append(restored_object)
+            self.redraw()
+            self.object_debugging = True
+        else:
+            self.show_alert("Nothing to redo.")
+
+    def show_alert(self, message: str):
+        msg = QMessageBox()
+        msg.setWindowTitle("Info")
+        msg.setWindowIcon(QIcon("assets/logo.png"))
+        msg.setText(message)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.exec()
