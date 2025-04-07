@@ -1,3 +1,4 @@
+import math
 from operator import invert
 from typing import List
 
@@ -6,6 +7,10 @@ from PyQt6.QtCore import Qt, QPoint, QSize
 from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor, QIcon
 from PyQt6.QtWidgets import QWidget, QMessageBox
 
+from src.drawing_algorithms.conic_sections.circle import draw_circle
+from src.drawing_algorithms.conic_sections.ellipse import draw_ellipse
+from src.drawing_algorithms.conic_sections.hyperbola import draw_hyperbola
+from src.drawing_algorithms.conic_sections.parabola import draw_parabola
 from src.drawing_algorithms.lines.bresenham import bresenham_line
 from src.drawing_algorithms.lines.dda import dda_line
 from src.drawing_algorithms.lines.wu import wu_line
@@ -220,12 +225,53 @@ class Canvas(QWidget):
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
 
+        elif self.algorithm == "circle":
+            pixels = draw_circle(start[0], start[1],
+                                 round(math.sqrt(pow(start[0] - end[0], 2) + pow(start[1] - end[1], 2))))
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
+
+        elif self.algorithm == "ellipse":
+            pixels = draw_ellipse(start, end)
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
+
+        elif self.algorithm == "parabola":
+            pixels = draw_parabola(start, end)
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
+
+        elif self.algorithm == "hyperbola":
+            pixels = draw_hyperbola(start, end)
+            for x, y in pixels:
+                if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+            pixels_with_alpha = []
+            for x, y in pixels:
+                pixels_with_alpha.append([x, y, 255])
+            self.objects.append(pixels_with_alpha)
+
         self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
         self.update()
 
     def set_algorithm(self, algo_name):
         """Меняет алгоритм рисования"""
-        if algo_name.lower() in {"wu", "bresenham", "dda"}:
+        if algo_name.lower() in {"wu", "bresenham", "dda", "circle", "ellipse", "parabola", "hyperbola"}:
             self.algorithm = algo_name.lower()
             print(f"Алгоритм изменен на: {self.algorithm}")
 

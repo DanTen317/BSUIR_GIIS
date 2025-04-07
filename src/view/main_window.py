@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status)
 
         self.workspace = QWidget()
-        self.canvas_size = QSize(16, 16)  # Размер холста
+        self.canvas_size = QSize(100, 100)  # Размер холста
 
         self.is_debug_mode = False  # Флаг для отслеживания режима отладки
         self.last_object = []
@@ -49,7 +49,7 @@ class MainWindow(QMainWindow):
         lines_submenu = tool_menu.addMenu("Lines")
 
         # Действия для выбора алгоритма
-
+        # Меню отрезков
         dda_action = QAction("DDA", self)
         dda_action.triggered.connect(lambda: self.canvas.set_algorithm("dda"))
 
@@ -62,6 +62,26 @@ class MainWindow(QMainWindow):
         lines_submenu.addAction(dda_action)
         lines_submenu.addAction(bresenham_action)
         lines_submenu.addAction(wu_action)
+
+        # Меню линий второго порядка
+        conic_sections_submenu = tool_menu.addMenu("Conic sections")
+
+        circle_action = QAction("Circle", self)
+        circle_action.triggered.connect(lambda: self.canvas.set_algorithm("circle"))
+
+        ellipse_action = QAction("Ellipse", self)
+        ellipse_action.triggered.connect(lambda: self.canvas.set_algorithm("ellipse"))
+
+        parabola_action = QAction("Parabola", self)
+        parabola_action.triggered.connect(lambda: self.canvas.set_algorithm("parabola"))
+
+        hyperbola_action = QAction("Hyperbola", self)
+        hyperbola_action.triggered.connect(lambda: self.canvas.set_algorithm("hyperbola"))
+
+        conic_sections_submenu.addAction(circle_action)
+        conic_sections_submenu.addAction(ellipse_action)
+        conic_sections_submenu.addAction(parabola_action)
+        conic_sections_submenu.addAction(hyperbola_action)
 
     def build_window_content(self):
         main_layout = QVBoxLayout()
