@@ -2,14 +2,14 @@ def draw_hyperbola(start, end):
     x0, y0 = start
     x1, y1 = end
     a = round(abs(x1 - x0) / 2)
-    b = abs(y1 - y0)
+    b = round(abs(y1 - y0) / 2)
 
     x = a
     y = 0
     d = (b ** 2) * (1 + 2 * abs(a)) - a ** 2  # начальное значение d
     points = []
 
-    while x <= abs(x1 - x0):
+    while x - a <= abs(x1 - x0):
         points.extend([(x + x0 - a, y + y0),
                        (x + x0 - a, y0 - y),
                        (x0 - a - x, y + y0),

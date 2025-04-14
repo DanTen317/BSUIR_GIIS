@@ -198,7 +198,9 @@ class Canvas(QWidget):
 
     def draw_line_on_canvas(self, start, end):
         """Рисует линию выбранным алгоритмом."""
-
+        if start == end:
+            self.show_alert("Start and end cannot be the same")
+            return
         # Выбор алгоритма
         if self.algorithm == "wu":
             pixels = wu_line(start, end)
@@ -257,14 +259,21 @@ class Canvas(QWidget):
             self.objects.append(pixels_with_alpha)
 
         elif self.algorithm == "hyperbola":
-            pixels = draw_hyperbola(start, end)
-            for x, y in pixels:
-                if 0 <= x < self.image_width and 0 <= y < self.image_height:
-                    self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
-            pixels_with_alpha = []
-            for x, y in pixels:
-                pixels_with_alpha.append([x, y, 255])
-            self.objects.append(pixels_with_alpha)
+            if start[0] == end[0] or abs(start[0] - end[0]) < 2:
+                self.show_alert("Start x and end x cannot be the same")
+                return
+            if start[1] == end[1]:
+                self.show_alert("Start y and end y cannot be the same")
+                return
+            else:
+                pixels = draw_hyperbola(start, end)
+                for x, y in pixels:
+                    if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                        self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+                pixels_with_alpha = []
+                for x, y in pixels:
+                    pixels_with_alpha.append([x, y, 255])
+                self.objects.append(pixels_with_alpha)
 
         self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
         self.update()
