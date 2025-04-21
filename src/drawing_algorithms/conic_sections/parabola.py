@@ -18,7 +18,6 @@ def draw_parabola(start, end):
 
     # Вычисление начального p
     p = dx ** 2 / (2 * abs(dy))
-    print(f"Initial p: {p}")
 
     # Центрирование: вершина -> (0,0)
     x = 0

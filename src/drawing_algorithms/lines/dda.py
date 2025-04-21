@@ -33,6 +33,5 @@ def dda_line(start_point, end_point):
         # Приращение координат
         x += x_increment
         y += y_increment
-        print(x, y)
 
     return pixels

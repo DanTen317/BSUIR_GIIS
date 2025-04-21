@@ -3,8 +3,8 @@ from operator import invert
 from typing import List
 
 import numpy as np
-from PyQt6.QtCore import Qt, QPoint, QSize
-from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QCursor, QIcon
+from PyQt6.QtCore import Qt, QPoint, QSize, QPointF
+from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QIcon, QPen, QColor
 from PyQt6.QtWidgets import QWidget, QMessageBox
 
 from src.drawing_algorithms.conic_sections.circle import draw_circle
@@ -106,6 +106,9 @@ class Canvas(QWidget):
             self.offset += delta
             self.clamp_offset()  # Ограничение выхода за края
             self.update()
+        if self.drawing_line:
+            self.end_point = self.to_canvas_coords(event.pos())
+            self.update()
 
         # Координаты с учетом масштаба
         x = int((event.position().x() - self.offset.x()) / self.zoom_factor)
@@ -127,6 +130,7 @@ class Canvas(QWidget):
             # Начало рисования линии
             self.drawing_line = True
             self.start_point = self.to_canvas_coords(event.pos())
+            self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Окончание перетаскивания"""
@@ -139,25 +143,30 @@ class Canvas(QWidget):
             self.end_point = self.to_canvas_coords(event.pos())
             self.draw_line_on_canvas(self.start_point, self.end_point)
             self.drawing_line = False
+            self.start_point = None  # Убираем начальную точку
+            self.end_point = None  # Убираем конечную точку
             self.update()
 
     def paintEvent(self, event):
-        """Рендеринг холста"""
+        """Рендеринг холста с временной линией, не удаляя уже нарисованные объекты"""
         painter = QPainter(self)
 
-        # Масштабирование изображения
+        # Отображаем основное изображение
         scaled_image = self.image.scaled(self.sizeHint(), Qt.AspectRatioMode.IgnoreAspectRatio)
-
-        # Визуализация текущей линии во время рисования
-        if self.drawing_line and self.start_point:
-            painter.setPen(Qt.GlobalColor.blue)
-            canvas_end = self.to_canvas_coords(self.mapFromGlobal(QCursor.pos()))
-            start_screen = QPoint(*self.start_point) * self.zoom_factor + self.offset
-            end_screen = QPoint(*canvas_end) * self.zoom_factor + self.offset
-            painter.drawLine(start_screen, end_screen)
-
-        # Отрисовка изображения с учетом смещения
         painter.drawImage(self.offset, scaled_image)
+
+        # Визуализация линии между точками
+        if self.start_point and self.end_point:
+            pen = QPen(QColor(255, 0, 0, 128))
+            pen.setWidth(2)
+            painter.setPen(pen)
+
+            screen_start = QPointF(self.start_point[0] * self.zoom_factor + self.offset.x(),
+                                   self.start_point[1] * self.zoom_factor + self.offset.y())
+            screen_end = QPointF(self.end_point[0] * self.zoom_factor + self.offset.x(),
+                                 self.end_point[1] * self.zoom_factor + self.offset.y())
+
+            painter.drawLine(screen_start, screen_end)  # Рисуем только временную линию
 
     def wheelEvent(self, event: QWheelEvent):
         """Масштабирование с помощью колесика"""
