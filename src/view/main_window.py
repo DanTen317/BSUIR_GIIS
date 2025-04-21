@@ -1,7 +1,7 @@
-from PyQt6.QtCore import QSize
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QMainWindow, QApplication, QLineEdit, QPushButton, QWidget, QHBoxLayout, QVBoxLayout, \
-    QToolBar, QGridLayout, QMenuBar, QMenu, QStatusBar, QScrollArea, QMessageBox
+    QToolBar, QGridLayout, QMenuBar, QMenu, QStatusBar, QScrollArea, QMessageBox, QCheckBox
 
 from src.view.canvas_widget import Canvas
 
@@ -32,6 +32,8 @@ class MainWindow(QMainWindow):
 
         self.build_menus()
         self.build_window_content()
+
+        self.canvas.algorithm_changed.connect(self.snap_curves_mode)
 
         self.setCentralWidget(self.workspace)
         self.show()
@@ -83,6 +85,23 @@ class MainWindow(QMainWindow):
         conic_sections_submenu.addAction(parabola_action)
         conic_sections_submenu.addAction(hyperbola_action)
 
+        # Меню параметрических кривых
+        parametric_submenu = tool_menu.addMenu("Parametric")
+
+        hermite_action = QAction("Hermite", self)
+        hermite_action.triggered.connect(lambda: self.canvas.set_algorithm("hermite"))
+
+        bezier_action = QAction("Bezier", self)
+        bezier_action.triggered.connect(lambda: self.canvas.set_algorithm("bezier"))
+
+        b_spline_action = QAction("B-spline", self)
+        b_spline_action.triggered.connect(lambda: self.canvas.set_algorithm("b-spline"))
+
+        parametric_submenu.addAction(hermite_action)
+        parametric_submenu.addAction(bezier_action)
+        parametric_submenu.addAction(b_spline_action)
+
+
     def build_window_content(self):
         main_layout = QVBoxLayout()
 
@@ -125,6 +144,12 @@ class MainWindow(QMainWindow):
         self.debug_prev_button.setEnabled(False)
         self.debug_prev_button.hide()
 
+        # Режим стыковки кривых
+        self.snap_button = QCheckBox("Snap parametric")
+        self.snap_button.setEnabled(False)
+        self.snap_button.clicked.connect(self.snap_curves_mode)
+
+        button_layout.addWidget(self.snap_button)
         button_layout.addWidget(self.filler)
         button_layout.addWidget(self.debug_prev_button)
         button_layout.addWidget(self.debug_next_button)
@@ -194,3 +219,15 @@ class MainWindow(QMainWindow):
             self.workspace.setStyleSheet("")
             # self.canvas.objects.append(last_painted)
             # self.canvas.redraw()
+
+    def snap_curves_mode(self):
+        if self.canvas.algorithm in ["hermite", "bezier", "b-spline"]:
+            self.snap_button.setEnabled(True)
+            if(self.snap_button.isChecked()):
+                self.canvas.multi_curve = True
+            else:
+                self.canvas.multi_curve = False
+        else:
+            self.snap_button.setEnabled(False)
+            self.snap_button.setChecked(False)
+            self.canvas.multi_curve = False

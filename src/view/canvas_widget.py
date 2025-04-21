@@ -3,7 +3,7 @@ from operator import invert
 from typing import List
 
 import numpy as np
-from PyQt6.QtCore import Qt, QPoint, QSize, QPointF
+from PyQt6.QtCore import Qt, QPoint, QSize, QPointF, pyqtSignal
 from PyQt6.QtGui import QImage, QMouseEvent, QPainter, QWheelEvent, QIcon, QPen, QColor
 from PyQt6.QtWidgets import QWidget, QMessageBox
 
@@ -11,13 +11,16 @@ from src.drawing_algorithms.conic_sections.circle import draw_circle
 from src.drawing_algorithms.conic_sections.ellipse import draw_ellipse
 from src.drawing_algorithms.conic_sections.hyperbola import draw_hyperbola
 from src.drawing_algorithms.conic_sections.parabola import draw_parabola
+from src.drawing_algorithms.curves.bezier import draw_bezier_curve
+from src.drawing_algorithms.curves.hermite import draw_hermite_curve
 from src.drawing_algorithms.lines.bresenham import bresenham_line
 from src.drawing_algorithms.lines.dda import dda_line
-from src.drawing_algorithms.lines.wu import wu_line
+from src.drawing_algorithms.lines.wu import wu_line, round_int
 
 
 class Canvas(QWidget):
     """Холст для рисования"""
+    algorithm_changed = pyqtSignal()
 
     def __init__(self, status_bar=None, size: QSize = (200, 200)):
         super().__init__()
@@ -51,11 +54,16 @@ class Canvas(QWidget):
         self.drawing_line = False
         self.start_point = None
         self.end_point = None
+        self.preview_lines = []
+
+        self.last_line = None
+        self.last_vector = None
+        self.multi_curve = False
 
         # Хранение всех фигур
         self.objects = []
 
-        self.algorithm = "dda"
+        self.algorithm = "bezier"
 
         # Стеки для дебага
         self.in_debug = False
@@ -141,11 +149,18 @@ class Canvas(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self.drawing_line and not self.in_debug:
             # Завершение рисования линии
             self.end_point = self.to_canvas_coords(event.pos())
+
             self.draw_line_on_canvas(self.start_point, self.end_point)
-            self.drawing_line = False
+            if self.algorithm in ["hermite", "bezier", "b-spline"] and len(self.preview_lines) < 1:
+                self.drawing_line = True
+                self.preview_lines.append((self.start_point, self.end_point))
+            else:
+                print("cleared")
+                self.drawing_line = False
+                self.preview_lines.clear()
             self.start_point = None  # Убираем начальную точку
             self.end_point = None  # Убираем конечную точку
-            self.update()
+        self.update()
 
     def paintEvent(self, event):
         """Рендеринг холста с временной линией, не удаляя уже нарисованные объекты"""
@@ -155,18 +170,23 @@ class Canvas(QWidget):
         scaled_image = self.image.scaled(self.sizeHint(), Qt.AspectRatioMode.IgnoreAspectRatio)
         painter.drawImage(self.offset, scaled_image)
 
-        # Визуализация линии между точками
-        if self.start_point and self.end_point:
-            pen = QPen(QColor(255, 0, 0, 128))
-            pen.setWidth(2)
-            painter.setPen(pen)
+        # Визуализация временных линий
+        pen = QPen(QColor(255, 0, 0, 128))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        for line in self.preview_lines:
+            line_screen_start = QPointF(line[0][0] * self.zoom_factor + self.offset.x(),
+                                        line[0][1] * self.zoom_factor + self.offset.y())
+            line_screen_end = QPointF(line[1][0] * self.zoom_factor + self.offset.x(),
+                                      line[1][1] * self.zoom_factor + self.offset.y())
+            painter.drawLine(line_screen_start, line_screen_end)
 
+        if self.start_point and self.end_point:
             screen_start = QPointF(self.start_point[0] * self.zoom_factor + self.offset.x(),
                                    self.start_point[1] * self.zoom_factor + self.offset.y())
             screen_end = QPointF(self.end_point[0] * self.zoom_factor + self.offset.x(),
                                  self.end_point[1] * self.zoom_factor + self.offset.y())
-
-            painter.drawLine(screen_start, screen_end)  # Рисуем только временную линию
+            painter.drawLine(screen_start, screen_end)  # Рисуем последнюю временную линию
 
     def wheelEvent(self, event: QWheelEvent):
         """Масштабирование с помощью колесика"""
@@ -209,12 +229,16 @@ class Canvas(QWidget):
         """Рисует линию выбранным алгоритмом."""
         if start == end:
             self.show_alert("Start and end cannot be the same")
+            self.last_line = None
             return
+
         # Выбор алгоритма
         if self.algorithm == "wu":
             pixels = wu_line(start, end)
             self.draw_object_from_pixels(pixels)
             self.objects.append(pixels)
+            self.last_line = None
+
 
         elif self.algorithm == "bresenham":
             pixels = bresenham_line(start, end)
@@ -225,6 +249,8 @@ class Canvas(QWidget):
             for x, y in pixels:
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
 
         elif self.algorithm == "dda":
             pixels = dda_line(start, end)
@@ -235,6 +261,8 @@ class Canvas(QWidget):
             for x, y in pixels:
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
 
         elif self.algorithm == "circle":
             pixels = draw_circle(start[0], start[1],
@@ -246,6 +274,8 @@ class Canvas(QWidget):
             for x, y in pixels:
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
 
         elif self.algorithm == "ellipse":
             pixels = draw_ellipse(start, end)
@@ -256,6 +286,8 @@ class Canvas(QWidget):
             for x, y in pixels:
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
 
         elif self.algorithm == "parabola":
             pixels = draw_parabola(start, end)
@@ -266,6 +298,8 @@ class Canvas(QWidget):
             for x, y in pixels:
                 pixels_with_alpha.append([x, y, 255])
             self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
 
         elif self.algorithm == "hyperbola":
             if start[0] == end[0] or abs(start[0] - end[0]) < 2:
@@ -283,15 +317,61 @@ class Canvas(QWidget):
                 for x, y in pixels:
                     pixels_with_alpha.append([x, y, 255])
                 self.objects.append(pixels_with_alpha)
+            self.last_line = None
+
+        elif self.algorithm == "hermite":
+            if self.last_line:
+                p1 = self.last_line[0]
+                r1 = self.last_line[1]
+                p2 = start
+                r2 = end
+                pixels = draw_hermite_curve(p1, p2, r1, r2)
+                for x, y in pixels:
+                    if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                        self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+                pixels_with_alpha = []
+                for x, y in pixels:
+                    pixels_with_alpha.append([x, y, 255])
+                self.objects.append(pixels_with_alpha)
+                self.last_vector = self.last_line
+                if self.multi_curve:
+                    dx= start[0] - end[0]
+                    dy= start[1] - end[1]
+                    self.last_line = (start, (start[0]+dx, start[1]+dy))
+                else:
+                    self.last_line = None
+            else:
+                self.last_line = (start, end)
+
+        elif self.algorithm == "bezier":
+            if self.last_line:
+                p0 = self.last_line[0]
+                p1 = self.last_line[1]
+                p2 = start
+                p3 = end
+                pixels = draw_bezier_curve(p0, p1, p2, p3)
+                for x, y in pixels:
+                    if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                        self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+                pixels_with_alpha = []
+                for x, y in pixels:
+                    pixels_with_alpha.append([x, y, 255])
+                self.objects.append(pixels_with_alpha)
+                self.last_vector = self.last_line
+                self.last_line = None
+            else:
+                self.last_line = (start, end)
 
         self.image = QImage(self.canvas_pixels, self.image_width, self.image_height, QImage.Format.Format_RGBA8888)
         self.update()
 
     def set_algorithm(self, algo_name):
         """Меняет алгоритм рисования"""
-        if algo_name.lower() in {"wu", "bresenham", "dda", "circle", "ellipse", "parabola", "hyperbola"}:
+        if algo_name.lower() in {"wu", "bresenham", "dda", "circle", "ellipse", "parabola", "hyperbola", "hermite",
+                                 "bezier", "b-spline"}:
             self.algorithm = algo_name.lower()
             print(f"Алгоритм изменен на: {self.algorithm}")
+            self.algorithm_changed.emit()
 
     def redraw(self):
         self.canvas_pixels[:, :, :3] = 255  # Белый фон
