@@ -323,9 +323,9 @@ class Canvas(QWidget):
             if self.last_line:
                 p1 = self.last_line[0]
                 r1 = self.last_line[1]
-                p2 = start
-                r2 = end
-                pixels = draw_hermite_curve(p1, p2, r1, r2)
+                p4 = start
+                r4 = end
+                pixels = draw_hermite_curve(p1, p4, r1, r4)
                 for x, y in pixels:
                     if 0 <= x < self.image_width and 0 <= y < self.image_height:
                         self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
