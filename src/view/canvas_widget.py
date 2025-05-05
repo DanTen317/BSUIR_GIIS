@@ -13,9 +13,10 @@ from src.drawing_algorithms.conic_sections.hyperbola import draw_hyperbola
 from src.drawing_algorithms.conic_sections.parabola import draw_parabola
 from src.drawing_algorithms.curves.bezier import draw_bezier_curve
 from src.drawing_algorithms.curves.hermite import draw_hermite_curve
+from src.drawing_algorithms.curves.b_spline import draw_b_spline
 from src.drawing_algorithms.lines.bresenham import bresenham_line
 from src.drawing_algorithms.lines.dda import dda_line
-from src.drawing_algorithms.lines.wu import wu_line, round_int
+from src.drawing_algorithms.lines.wu import wu_line
 
 
 class Canvas(QWidget):
@@ -57,6 +58,7 @@ class Canvas(QWidget):
         self.preview_lines = []
 
         self.last_line = None
+        self.last_point = None
         self.last_vector = None
         self.multi_curve = False
 
@@ -154,6 +156,8 @@ class Canvas(QWidget):
             if self.algorithm in ["hermite", "bezier", "b-spline"] and len(self.preview_lines) < 1:
                 self.drawing_line = True
                 self.preview_lines.append((self.start_point, self.end_point))
+                if self.algorithm == "b-spline":
+                    self.preview_lines.append((self.preview_lines[-1][1], self.start_point))
             else:
                 print("cleared")
                 self.drawing_line = False
@@ -335,9 +339,9 @@ class Canvas(QWidget):
                 self.objects.append(pixels_with_alpha)
                 self.last_vector = self.last_line
                 if self.multi_curve:
-                    dx= start[0] - end[0]
-                    dy= start[1] - end[1]
-                    self.last_line = (start, (start[0]+dx, start[1]+dy))
+                    dx = start[0] - end[0]
+                    dy = start[1] - end[1]
+                    self.last_line = (start, (start[0] + dx, start[1] + dy))
                 else:
                     self.last_line = None
             else:
@@ -358,7 +362,43 @@ class Canvas(QWidget):
                     pixels_with_alpha.append([x, y, 255])
                 self.objects.append(pixels_with_alpha)
                 self.last_vector = self.last_line
-                self.last_line = None
+                if self.multi_curve:
+                    dx = end[0] - start[0]
+                    dy = end[1] - start[1]
+                    self.last_line = (end, (end[0] + dx, end[1] + dy))
+                    self.preview_lines.append(self.last_line)
+                else:
+                    self.last_line = None
+            else:
+                self.last_line = (start, end)
+        elif self.algorithm == "b-spline":
+            print(self.last_line, self.last_point)
+            if self.last_line:
+                p0 = self.last_line[0]
+                p1 = self.last_line[1]
+                p2 = start
+                p3 = end
+                if self.last_point is not None:
+                    p2 = self.last_point
+                    p3 = start
+                pixels = draw_b_spline(p0, p1, p2, p3)
+                for x, y in pixels:
+                    if 0 <= x < self.image_width and 0 <= y < self.image_height:
+                        self.canvas_pixels[y, x] = [0, 0, 0, 255]  # Черный цвет
+                pixels_with_alpha = []
+                for x, y in pixels:
+                    pixels_with_alpha.append([x, y, 255])
+                self.objects.append(pixels_with_alpha)
+                self.last_vector = self.last_line
+                if self.multi_curve:
+                    print("-----")
+                    print(p0, p1, p2, p3)
+                    self.last_line = (p1, p2)
+                    self.last_point = p3
+                    self.preview_lines.append(self.last_line)
+                else:
+                    self.last_line = None
+                    self.last_point = None
             else:
                 self.last_line = (start, end)
 
