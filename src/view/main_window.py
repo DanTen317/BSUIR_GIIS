@@ -149,6 +149,14 @@ class MainWindow(QMainWindow):
         self.snap_button.setEnabled(False)
         self.snap_button.clicked.connect(self.snap_curves_mode)
 
+        self.clear_button = QPushButton("Clear")
+        self.clear_button.clicked.connect(self.canvas.clear_canvas)
+
+        self.remove_last_button = QPushButton("Remove last")
+        self.remove_last_button.clicked.connect(self.canvas.remove_last)
+
+        button_layout.addWidget(self.clear_button)
+        button_layout.addWidget(self.remove_last_button)
         button_layout.addWidget(self.snap_button)
         button_layout.addWidget(self.filler)
         button_layout.addWidget(self.debug_prev_button)

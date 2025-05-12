@@ -504,3 +504,20 @@ class Canvas(QWidget):
         msg.setText(message)
         msg.setIcon(QMessageBox.Icon.Information)
         msg.exec()
+
+    def clear_canvas(self):
+        self.objects = []
+        self.last_line = None
+        self.last_vector = None
+        self.last_point = None
+        self.preview_lines = []
+        self.redraw()
+
+    def remove_last(self):
+        if self.objects:
+            self.objects.pop()
+        self.last_line = None
+        self.last_vector = None
+        self.last_point = None
+        self.preview_lines = []
+        self.redraw()
