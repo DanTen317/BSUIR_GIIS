@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QToolBar,
-                             QMenuBar, QMenu, QComboBox, QPushButton, QStatusBar)
+                             QMenuBar, QMenu, QComboBox, QPushButton, QStatusBar, QLabel, QCheckBox)
 from PyQt6.QtGui import QAction, QActionGroup
 from canvas_widget import CanvasWidget
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -23,36 +24,36 @@ class MainWindow(QMainWindow):
 
         # Создаем меню
         self.create_menu()
-        
+
         # Создаем панель инструментов
         self.create_toolbar()
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.canvas.editor.polygon_finished.connect(self.on_polygon_finished)
+        self.canvas.editor.polygon_finished.connect(self.show_status_message)
 
-    def on_polygon_finished(self,message):
+    def show_status_message(self, message):
         self.status_bar.showMessage(message)
 
     def create_menu(self):
         menubar = self.menuBar()
-        
+
         # Меню "Построение полигонов"
         polygon_menu = menubar.addMenu("Построение полигонов")
-        
+
         # Подменю выбора метода построения выпуклой оболочки
         hull_menu = polygon_menu.addMenu("Метод построения выпуклой оболочки")
-        
+
         # Создаем группу действий для методов
         hull_group = QActionGroup(self)
-        
+
         # Действие для метода Грэхема
         graham_action = QAction("Метод Грэхема", self, checkable=True)
         graham_action.setChecked(True)
         graham_action.triggered.connect(lambda: self.set_hull_method("Graham"))
         hull_group.addAction(graham_action)
         hull_menu.addAction(graham_action)
-        
+
         # Действие для метода Джарвиса
         jarvis_action = QAction("Метод Джарвиса", self, checkable=True)
         jarvis_action.triggered.connect(lambda: self.set_hull_method("Jarvis"))
@@ -93,6 +94,34 @@ class MainWindow(QMainWindow):
         clear_button.clicked.connect(self.clear_canvas)
         toolbar.addWidget(clear_button)
 
+        toolbar.addSeparator()
+
+        # Заливка
+        fill_combo = QComboBox(self)
+        fill_combo.addItems(["EdgeList", "ActiveEdge", "SimpleSeed", "ScanlineSeed", "None"])
+        fill_combo.currentTextChanged.connect(
+            lambda text: self.set_fill_algorithm(text))
+        toolbar.addWidget(fill_combo)
+        # fill_button = QPushButton("Залить")
+        # fill_button.clicked.connect(self.fill)
+        # toolbar.addWidget(fill_button)
+
+        toolbar.addSeparator()
+
+        # Секция отладки
+        debug_label = QLabel("Отладка:")
+        toolbar.addWidget(debug_label)
+
+        # Чекбокс для режима отладки
+        self.debug_checkbox = QCheckBox("Режим отладки")
+        self.debug_checkbox.toggled.connect(self.toggle_debug_mode)
+        toolbar.addWidget(self.debug_checkbox)
+
+        # Кнопка "Следующий шаг"
+        self.next_step_button = QPushButton("Следующий шаг")
+        self.next_step_button.clicked.connect(self.next_debug_step)
+        self.next_step_button.setEnabled(False)  # Изначально отключена
+        toolbar.addWidget(self.next_step_button)
 
     def set_hull_method(self, method):
         print(f"Алгоритм построения оболочек: {method}")
@@ -110,8 +139,24 @@ class MainWindow(QMainWindow):
         self.canvas.editor.reset_current_action()
         self.canvas.update()
 
-        
+    def set_fill_algorithm(self, algorithm):
+        print(f"Алгоритм заливки: {algorithm}")
+        self.canvas.editor.set_fill_algorithm(algorithm)
+
+    def fill(self):
+        self.canvas.update()
+
     def clear_canvas(self):
         self.canvas.editor.clear()
         self.canvas.update()
         print("Очищено")
+
+    def toggle_debug_mode(self, checked):
+        print(f"Режим отладки {'включен' if checked else 'выключен'}")
+        self.show_status_message(f"Режим отладки {'включен' if checked else 'выключен'}")
+
+        self.canvas.editor.toggle_debug_mode(checked)
+        self.next_step_button.setEnabled(checked)
+
+    def next_debug_step(self):
+        self.canvas.editor.next_debug_step()

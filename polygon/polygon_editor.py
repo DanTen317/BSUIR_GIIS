@@ -3,6 +3,7 @@ import math
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QPen
 
+from polygon.fill_algorithms import fill_edge_list, fill_active_edge, fill_simple_seed, fill_scanline_seed
 from src.drawing_algorithms.lines.bresenham import bresenham_line
 from src.drawing_algorithms.lines.dda import dda_line
 from src.drawing_algorithms.lines.wu import wu_line
@@ -14,6 +15,7 @@ class Polygon:
         self.hull_points = []
         self.normals = []
         self.is_closed = False
+        self.fill = []
 
 
 def distance(p, q):
@@ -22,6 +24,7 @@ def distance(p, q):
 
 class PolygonEditor(QObject):
     polygon_finished = pyqtSignal(str)
+
     def __init__(self, canvas):
         super().__init__()
         self.canvas = canvas
@@ -30,11 +33,18 @@ class PolygonEditor(QObject):
         self.hull_method = "Graham"
         self.line_algorithm = "CDA"
         self.drawing_mode = "Полигон"  # Добавляем режим рисования
+        self.fill_algorithm = "EdgeList"
         self.points_in_polygons = {}  # point: inside?
         self.current_line_start = None  # Начальная точка линии
         self.lines = []
         self.intersections = []  # Точки пересечения
         print("PolygonEditor: Режим построения многоугольника включён.")
+
+        self.debug_mode = False
+        self.debug_step_ready = False
+        self.fill_points = []  # Список всех точек для заливки
+        self.fill_point_index = 0  # Текущий индекс для пошаговой заливки
+        self.batch_size = 100  # Количество точек, отрисовываемых за один шаг
 
     def reset_current_action(self):
         """Сбрасывает текущее действие при смене режима"""
@@ -109,6 +119,11 @@ class PolygonEditor(QObject):
 
         # Добавляем завершенный полигон в список
         self.polygons.append(self.current_polygon)
+        
+        # Сбрасываем переменные отладки
+        self.fill_points = []
+        self.fill_point_index = 0
+        
         # Создаем новый текущий полигон
         self.current_polygon = Polygon()
         self.canvas.update()
@@ -377,15 +392,15 @@ class PolygonEditor(QObject):
     def calculate_internal_normals(self):
         self.current_polygon.normals = []
         n = len(self.current_polygon.vertices)
-        
+
         # Определяем ориентацию полигона
         area = 0
         for i in range(n):
             j = (i + 1) % n
             area += (self.current_polygon.vertices[i][0] * self.current_polygon.vertices[j][1] -
-                    self.current_polygon.vertices[j][0] * self.current_polygon.vertices[i][1])
+                     self.current_polygon.vertices[j][0] * self.current_polygon.vertices[i][1])
         clockwise = area < 0  # True если по часовой стрелке
-        
+
         for i in range(n):
             p1 = self.current_polygon.vertices[i]
             p2 = self.current_polygon.vertices[(i + 1) % n]
@@ -425,6 +440,10 @@ class PolygonEditor(QObject):
         # Отрисовка завершенных полигонов
         for polygon in self.polygons:
             self._draw_polygon(painter, polygon)
+
+        if self.polygons:
+            if self.polygons[-1].is_closed:
+                self._draw_fill(painter, self.polygons[-1])
 
         # Отрисовка текущего полигона
         if self.current_polygon and self.current_polygon.vertices:
@@ -542,6 +561,46 @@ class PolygonEditor(QObject):
                 painter.drawLine(int(start[0]), int(start[1]),
                                  int(end[0]), int(end[1]))
 
+    def _draw_fill(self, painter, polygon):
+        """Отрисовывает заливку для полигона"""
+        fill_pen = QPen(Qt.GlobalColor.blue)
+        painter.setPen(fill_pen)
+        
+        # Если активен режим отладки и у нас нет еще точек заливки, получаем их
+        if self.debug_mode and not self.fill_points and self.fill_algorithm != "None":
+            self.fill_points = []
+            self.fill_point_index = 0
+            
+            # Получаем все точки для заливки сразу, но отображать будем постепенно
+            if self.fill_algorithm == "EdgeList":
+                self.fill_points = fill_edge_list(polygon)
+            elif self.fill_algorithm == "ActiveEdge":
+                self.fill_points = fill_active_edge(polygon)
+            elif self.fill_algorithm == "SimpleSeed":
+                self.fill_points = fill_simple_seed(polygon)
+            elif self.fill_algorithm == "ScanlineSeed":
+                self.fill_points = fill_scanline_seed(polygon)
+                
+            print(f"Подготовлено точек для заливки: {len(self.fill_points)}")
+            return  # В режиме отладки не показываем точки сразу, а ждем нажатия кнопки
+        
+        # В обычном режиме или если отладка включена позже
+        if not self.debug_mode:
+            if self.fill_algorithm == "EdgeList":
+                polygon.fill = fill_edge_list(polygon)
+            elif self.fill_algorithm == "ActiveEdge":
+                polygon.fill = fill_active_edge(polygon)
+            elif self.fill_algorithm == "SimpleSeed":
+                polygon.fill = fill_simple_seed(polygon)
+            elif self.fill_algorithm == "ScanlineSeed":
+                polygon.fill = fill_scanline_seed(polygon)
+            elif self.fill_algorithm == "None":
+                polygon.fill = []
+        
+        # Отрисовываем точки из fill свойства полигона
+        for x, y in polygon.fill:
+            painter.drawPoint(x, y)
+
     def clear(self):
         self.polygons.clear()
         self.current_polygon = Polygon()
@@ -549,3 +608,65 @@ class PolygonEditor(QObject):
         self.lines = []
         self.intersections = []
         self.canvas.update()
+
+    def next_debug_step(self):
+        """Выполняет следующий шаг в режиме отладки"""
+        if not self.debug_mode or not self.fill_points:
+            return
+        
+        # Заполняем следующую партию точек
+        current_polygon = self.polygons[-1] if self.polygons else None
+        if not current_polygon or not current_polygon.is_closed:
+            return
+        
+        # Определяем количество точек для отображения в этом шаге
+        batch_end = min(self.fill_point_index + self.batch_size, len(self.fill_points))
+        
+        # Отображаем текущую партию точек
+        for i in range(self.fill_point_index, batch_end):
+            x, y = self.fill_points[i]
+            current_polygon.fill.append((x, y))
+        
+        # Обновляем индекс для следующего шага
+        self.fill_point_index = batch_end
+        
+        # Проверяем, закончили ли мы заполнение
+        if self.fill_point_index >= len(self.fill_points):
+            print(f"Заполнение завершено. Всего точек: {len(self.fill_points)}")
+        else:
+            remaining = len(self.fill_points) - self.fill_point_index
+            print(f"Отрисовано: {self.fill_point_index}/{len(self.fill_points)} точек. Осталось: {remaining}")
+        
+        # Перерисовываем холст
+        self.canvas.update()
+
+    def set_fill_algorithm(self, algorithm):
+        """Устанавливает алгоритм заливки и сбрасывает отладочную информацию"""
+        print(f"Алгоритм заливки: {algorithm}")
+        self.fill_algorithm = algorithm
+        
+        # Сбрасываем отладочную информацию при смене алгоритма
+        self.fill_points = []
+        self.fill_point_index = 0
+        
+        # Очищаем предыдущую заливку у всех полигонов
+        for polygon in self.polygons:
+            polygon.fill = []
+        
+        self.canvas.update()
+
+    def toggle_debug_mode(self, checked):
+        """Включает или выключает режим отладки и сбрасывает отладочные переменные"""
+        self.debug_mode = checked
+
+        # Сбрасываем отладочные переменные
+        self.fill_points = []
+        self.fill_point_index = 0
+
+        # Очищаем заливку у всех полигонов для перерисовки
+        for polygon in self.polygons:
+            polygon.fill = []
+
+        self.canvas.update()
+
+        print(f"Режим отладки {'включен' if checked else 'выключен'}")
