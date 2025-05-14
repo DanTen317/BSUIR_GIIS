@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QToolBar,
                              QMenuBar, QMenu, QComboBox, QPushButton, QStatusBar, QLabel, QCheckBox)
 from PyQt6.QtGui import QAction, QActionGroup
 from canvas_widget import CanvasWidget
+from lab_7.delaunay_editor import DelaunayEditor
 
 
 class MainWindow(QMainWindow):
@@ -31,6 +32,8 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.canvas.editor.polygon_finished.connect(self.show_status_message)
+
+        self.delaunay_editor = DelaunayEditor(self.canvas)
 
     def show_status_message(self, message):
         self.status_bar.showMessage(message)
@@ -71,7 +74,7 @@ class MainWindow(QMainWindow):
 
         # Режим рисования:
         mode_combo = QComboBox(self)
-        mode_combo.addItems(["Полигон", "Линия"])
+        mode_combo.addItems(["Полигон", "Линия","Триангуляция Делоне"])
         mode_combo.currentTextChanged.connect(self.set_drawing_mode)
         toolbar.addWidget(mode_combo)
 
@@ -135,8 +138,12 @@ class MainWindow(QMainWindow):
 
     def set_drawing_mode(self, mode):
         print(f"Режим рисования: {mode}")
-        self.canvas.editor.drawing_mode = mode
-        self.canvas.editor.reset_current_action()
+        if mode == "Триангуляция Делоне":
+            self.canvas.set_editor(self.delaunay_editor)
+        else:
+            self.canvas.set_editor(self.canvas.editor)
+            self.canvas.editor.drawing_mode = mode
+            self.canvas.editor.reset_current_action()
         self.canvas.update()
 
     def set_fill_algorithm(self, algorithm):
@@ -147,7 +154,7 @@ class MainWindow(QMainWindow):
         self.canvas.update()
 
     def clear_canvas(self):
-        self.canvas.editor.clear()
+        self.canvas.clear()
         self.canvas.update()
         print("Очищено")
 
